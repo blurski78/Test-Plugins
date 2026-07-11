@@ -1,7 +1,19 @@
-const { Plugin } = require("@enmity/api");
+// Plugin metadata embedded directly
+const manifest = {
+  name: "HoldToReply",
+  description: "Hold notification banner for 2 seconds to open reply box",
+  color: "#5865F2",
+  spec: "1",
+  authors: [
+    {
+      name: "Blurski",
+      id: "1497358039718821981"
+    }
+  ],
+  version: "1.0.0"
+};
+
 const { findModule, findStore } = require("@enmity/metro");
-const { React, Flux } = require("@enmity/metro/common");
-const { getByProps } = require("@enmity/modules");
 const { inject, uninject } = require("@enmity/patcher");
 
 // Find required modules
@@ -20,22 +32,7 @@ let currentNotif = null;
 let overlayRef = null;
 let animFrame = null;
 
-// Plugin metadata with YOUR info
-const manifest = {
-  name: "HoldToReply",
-  description: "Hold notification banner for 2 seconds to open reply box",
-  color: "#5865F2",
-  spec: "1",
-  authors: [
-    {
-      name: "Blurski",
-      id: "1497358039718821981"
-    }
-  ],
-  version: "1.0.0"
-};
-
-class HoldToReply {
+export default class HoldToReply {
   constructor() {
     this.patch = null;
     this.name = manifest.name;
@@ -53,23 +50,19 @@ class HoldToReply {
         const notif = args[0];
         if (!notif || !notif.channelId) return args;
 
-        // Store notification data
         currentNotif = {
           channelId: notif.channelId,
           messageId: notif.messageId,
           guildId: notif.guildId || null
         };
 
-        // Add long-press listener via overlay
         this.injectOverlay(notif);
-
         return args;
       }.bind(this)
     );
   }
 
   injectOverlay(notif) {
-    // Create invisible overlay that captures touch events
     const overlay = document.createElement("div");
     overlay.id = "hold-to-reply-overlay";
     overlay.style.cssText = `
@@ -83,7 +76,6 @@ class HoldToReply {
       touch-action: none;
     `;
 
-    // Progress bar
     const progress = document.createElement("div");
     progress.id = "hold-progress";
     progress.style.cssText = `
@@ -98,7 +90,6 @@ class HoldToReply {
     `;
     overlay.appendChild(progress);
 
-    // Touch events
     let startTime = 0;
 
     overlay.addEventListener("touchstart", function(e) {
@@ -106,7 +97,6 @@ class HoldToReply {
       startTime = Date.now();
       progress.style.width = "0%";
       
-      // Animate progress bar over 2 seconds
       const animate = function() {
         const elapsed = Date.now() - startTime;
         const pct = Math.min((elapsed / 2000) * 100, 100);
@@ -115,7 +105,6 @@ class HoldToReply {
         if (pct < 100) {
           animFrame = requestAnimationFrame(animate);
         } else {
-          // 2 seconds reached — trigger reply
           this.openReplyBox();
           this.removeOverlay();
         }
@@ -145,11 +134,9 @@ class HoldToReply {
     const channel = ChannelStore.getChannel(currentNotif.channelId);
     if (!channel) return;
 
-    // Open the channel
     const navigate = findModule((m) => m?.navigate);
     navigate?.navigate(`/channels/${currentNotif.guildId || "@me"}/${currentNotif.channelId}`);
 
-    // Focus input and set reply context
     setTimeout(function() {
       const input = document.querySelector(
         '[class*="chatInput"] textarea, [class*="textArea"]'
@@ -157,7 +144,6 @@ class HoldToReply {
       
       if (input) {
         input.focus();
-        // Set reply to the specific message if possible
         const message = MessageStore.getMessage(
           currentNotif.channelId,
           currentNotif.messageId
@@ -188,7 +174,6 @@ class HoldToReply {
     if (animFrame) cancelAnimationFrame(animFrame);
   }
 
-  // Getter methods for Enmity
   getName() {
     return this.name;
   }
@@ -210,6 +195,8 @@ class HoldToReply {
   }
 }
 
-// ⚠️ EXPORT WITH YOUR CLASS NAME ⚠️
-module.exports = HoldToReply;
-module.exports.manifest = manifest;
+// Make sure Enmity can find it
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = HoldToReply;
+  module.exports.manifest = manifest;
+}
