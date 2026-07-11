@@ -1,4 +1,10 @@
-// Plugin metadata embedded directly
+// Enmity IPA Plugin - HoldToReply
+// Author: Blurski
+// ID: 1497358039718821981
+
+const { findModule, findStore } = require("@enmity/metro");
+const { inject, uninject } = require("@enmity/patcher");
+
 const manifest = {
   name: "HoldToReply",
   description: "Hold notification banner for 2 seconds to open reply box",
@@ -12,9 +18,6 @@ const manifest = {
   ],
   version: "1.0.0"
 };
-
-const { findModule, findStore } = require("@enmity/metro");
-const { inject, uninject } = require("@enmity/patcher");
 
 // Find required modules
 const NotificationModule = findModule(
@@ -32,7 +35,7 @@ let currentNotif = null;
 let overlayRef = null;
 let animFrame = null;
 
-export default class HoldToReply {
+class HoldToReply {
   constructor() {
     this.patch = null;
     this.name = manifest.name;
@@ -42,6 +45,14 @@ export default class HoldToReply {
   }
 
   start() {
+    console.log("[HoldToReply] Plugin started!");
+    
+    // Make sure modules are found
+    if (!NotificationModule) {
+      console.error("[HoldToReply] NotificationModule not found!");
+      return;
+    }
+
     // Patch notification show method
     this.patch = inject(
       NotificationModule,
@@ -49,6 +60,8 @@ export default class HoldToReply {
       function(args) {
         const notif = args[0];
         if (!notif || !notif.channelId) return args;
+
+        console.log("[HoldToReply] Notification detected:", notif.channelId);
 
         currentNotif = {
           channelId: notif.channelId,
@@ -74,6 +87,7 @@ export default class HoldToReply {
       z-index: 999999;
       background: transparent;
       touch-action: none;
+      pointer-events: auto;
     `;
 
     const progress = document.createElement("div");
@@ -82,8 +96,8 @@ export default class HoldToReply {
       position: absolute;
       bottom: 0;
       left: 0;
-      height: 3px;
-      background: ${manifest.color};
+      height: 4px;
+      background: #5865F2;
       width: 0%;
       transition: none;
       border-radius: 0 2px 2px 0;
@@ -94,6 +108,7 @@ export default class HoldToReply {
 
     overlay.addEventListener("touchstart", function(e) {
       e.preventDefault();
+      e.stopPropagation();
       startTime = Date.now();
       progress.style.width = "0%";
       
@@ -105,6 +120,7 @@ export default class HoldToReply {
         if (pct < 100) {
           animFrame = requestAnimationFrame(animate);
         } else {
+          console.log("[HoldToReply] 2 seconds held - opening reply!");
           this.openReplyBox();
           this.removeOverlay();
         }
@@ -115,27 +131,41 @@ export default class HoldToReply {
 
     overlay.addEventListener("touchend", function(e) {
       e.preventDefault();
+      e.stopPropagation();
       if (animFrame) cancelAnimationFrame(animFrame);
       progress.style.width = "0%";
+      console.log("[HoldToReply] Touch released - cancelling");
     });
 
     overlay.addEventListener("touchcancel", function(e) {
       if (animFrame) cancelAnimationFrame(animFrame);
       progress.style.width = "0%";
+      console.log("[HoldToReply] Touch cancelled");
     });
 
     document.body.appendChild(overlay);
     overlayRef = overlay;
+    console.log("[HoldToReply] Overlay injected");
   }
 
   openReplyBox() {
-    if (!currentNotif) return;
+    if (!currentNotif) {
+      console.error("[HoldToReply] No notification data");
+      return;
+    }
 
     const channel = ChannelStore.getChannel(currentNotif.channelId);
-    if (!channel) return;
+    if (!channel) {
+      console.error("[HoldToReply] Channel not found");
+      return;
+    }
+
+    console.log("[HoldToReply] Opening channel:", currentNotif.channelId);
 
     const navigate = findModule((m) => m?.navigate);
-    navigate?.navigate(`/channels/${currentNotif.guildId || "@me"}/${currentNotif.channelId}`);
+    if (navigate) {
+      navigate.navigate(`/channels/${currentNotif.guildId || "@me"}/${currentNotif.channelId}`);
+    }
 
     setTimeout(function() {
       const input = document.querySelector(
@@ -144,17 +174,7 @@ export default class HoldToReply {
       
       if (input) {
         input.focus();
-        const message = MessageStore.getMessage(
-          currentNotif.channelId,
-          currentNotif.messageId
-        );
-        if (message && ChatInputModule?.startEditMessage) {
-          ChatInputModule.startEditMessage(
-            currentNotif.channelId,
-            currentNotif.messageId,
-            message.content
-          );
-        }
+        console.log("[HoldToReply] Input focused");
       }
     }, 300);
   }
@@ -168,35 +188,25 @@ export default class HoldToReply {
   }
 
   stop() {
+    console.log("[HoldToReply] Plugin stopped!");
     if (this.patch) uninject(this.patch);
     this.removeOverlay();
     if (pressTimer) clearTimeout(pressTimer);
     if (animFrame) cancelAnimationFrame(animFrame);
   }
-
-  getName() {
-    return this.name;
-  }
-
-  getVersion() {
-    return this.version;
-  }
-
-  getDescription() {
-    return this.description;
-  }
-
-  getAuthor() {
-    return this.author;
-  }
-
-  getManifest() {
-    return manifest;
-  }
 }
 
-// Make sure Enmity can find it
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = HoldToReply;
-  module.exports.manifest = manifest;
+// IPA export format
+module.exports = HoldToReply;
+module.exports.manifest = manifest;
+
+// Also try this for IPA
+if (typeof window !== 'undefined') {
+  if (!window.__enmity_plugins) window.__enmity_plugins = {};
+  window.__enmity_plugins["HoldToReply"] = {
+    default: HoldToReply,
+    manifest: manifest
+  };
 }
+
+console.log("[HoldToReply] Plugin loaded successfully!");
